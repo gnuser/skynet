@@ -1,5 +1,6 @@
 local skynet = require "skynet"
 local redis = require "redis"
+local cjson = require "cjson"
 
 local conf = {
     host = "127.0.0.1",
@@ -15,8 +16,9 @@ end
 
 local CMD = {}
 function CMD.login(params)
-    local account = params.account
-    local passwd = params.passwd
+    print("CMD.login enter")
+    local account = params[1]
+    local passwd = params[2]
 
     local errorCode = 0
     if db:hexists("h_login", tostring(account)) == 0 then
@@ -26,16 +28,23 @@ function CMD.login(params)
     end
 
     local loginInfo = db:hget("h_login", tostring(account))
-    if loginInfo.passwd ~= tostring(passwd) then
+    local loginJsonInfo = cjson.decode(loginInfo)
+
+    if loginJsonInfo.passwd ~= tostring(passwd) then
         print("account passwd is wrong!", account)
         errorCode = 2
         return false, errorCode        
     end
+
+    -- 通知agent登陆成功
+    return true
 end
 
+---
+-- 注册账号
 function CMD.register(params)
-    local account = params.account
-    local passwd = params.passwd    
+    local account = params[1]
+    local passwd = params[2]    
     local nickName = params.nickName
 
     local errorCode = 0
@@ -51,14 +60,21 @@ function CMD.register(params)
     -- 获取id
     local userLen = db:scard("s_login")
     local userId = userLen + 1
-    db:hset("h_login", tostring(account),
-            {
+    local accountValue = {
                 userId = userId,
                 passwd = tostring(passwd),
                 nickName = tostring(nickName)
             }
-    )
-        
+    local accountJsonValue = cjson.encode(accountValue)
+    db:hset("h_login", tostring(account),  accountJsonValue)
+    return true
+end
+
+---
+-- 清理账号
+function CMD.clearAccount(params)
+    local account = params[1]
+    db:hdel("h_login", tostring(account))
     return true
 end
 
@@ -67,7 +83,7 @@ skynet.start(function()
         db = redis.connect(conf)
         
         skynet.dispatch("lua", function(session, address, cmd, params)
-                            print("loginService get cmd:", cmd)
+                            print("loginService get cmd:", address, cmd)
             local f = assert(CMD[cmd])
             skynet.ret(skynet.pack(f(params)))
             --skynet.ret(skynet.pack(login(params)))

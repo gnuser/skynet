@@ -13,6 +13,7 @@ end
 
 local function close_agent(fd)
 	local a = agent[fd]
+    skynet.call(agent[fd], "lua", "stop", gate, fd)
 	if a then
 		skynet.kill(a)
 		agent[fd] = nil
@@ -30,9 +31,11 @@ function SOCKET.error(fd, msg)
 end
 
 function SOCKET.data(fd, msg)
+    print("socket data come from gate:", msg)
 end
 
 function CMD.start(conf)
+    -- 发送lua类型指令open,对应gate的CMD.open
 	skynet.call(gate, "lua", "open" , conf)
 end
 
@@ -47,6 +50,6 @@ skynet.start(function()
 			skynet.ret(skynet.pack(f(subcmd, ...)))
 		end
 	end)
-
+    -- 启动gate服务, 在目录service下
 	gate = skynet.newservice("gate")
 end)
